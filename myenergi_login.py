@@ -17,9 +17,9 @@ import sys
 import schedule
 from datetime import datetime
 import os
-#import json
+import json
 import requests
-from requests.auth import HTTPDigestAuth
+#from requests.auth import HTTPDigestAuth
 import urllib.request
 import socket
 
@@ -30,9 +30,6 @@ config_file = 'config.ini'
 
 zappi_base_url = 'https://s9.myenergi.net/'
 zappi_status_url = 'https://s9.myenergi.net/cgi-jstatus-Z'
-zappi_eco_mode_url = 'https://s9.myenergi.net/cgi-zappi-mode-Z12007471-2-0-0-0000'
-zappi_eco_mode_plus_url = 'https://s9.myenergi.net/cgi-zappi-mode-Z12007471-3-0-0-0000'
-zappi_smart_boost_url = 'https://s9.myenergi.net/cgi-zappi-mode-Z12007471-0-11-12-0400'
 
 ###########
 class DataTimeout(Exception):
@@ -98,8 +95,6 @@ def get_zappi_status():
         return json.loads(raw_data)
     except socket.timeout:
         raise DataTimeout
-
-    logging.info('Response was %s', stream.getcode())
 
     logging.info("End update time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")

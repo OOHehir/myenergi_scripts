@@ -12,15 +12,16 @@ import time
 from configparser import SafeConfigParser
 import logging
 import sys
-import pprint
-import paho.mqtt.client as mqtt
+#import pprint
+#import paho.mqtt.client as mqtt
 import schedule
 from datetime import datetime
 import os
-import json
+#import json
 import requests
 from requests.auth import HTTPDigestAuth
 import urllib.request
+import socket
 
 config_file = 'config.ini'
 
@@ -34,7 +35,8 @@ zappi_eco_mode_plus_url = 'https://s9.myenergi.net/cgi-zappi-mode-Z12007471-3-0-
 zappi_smart_boost_url = 'https://s9.myenergi.net/cgi-zappi-mode-Z12007471-0-11-12-0400'
 
 ###########
-
+class DataTimeout(Exception):
+    pass
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logging.info("Startup myenergi_login: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -62,7 +64,7 @@ def get_zappi_status():
     logging.info("login = %s , password = %s" % (hub_serial,hub_password) )
     logging.info("Prepare Session")
 
-    url = 'https://s9.myenergi.net/cgi-jstatus-Z'
+    url = 'http://s9.myenergi.net/cgi-jstatus-Z'
 
     req = urllib.request.Request(url)
 
@@ -78,8 +80,26 @@ def get_zappi_status():
     opener = urllib.request.build_opener(handler)
     urllib.request.install_opener(opener)
 
-    stream = urllib.request.urlopen(req, timeout=20)
-    log.debug('Response was %s', stream.getcode())
+    try:
+        stream = urllib.request.urlopen(req, timeout=20)
+        logging.info('Response was %s', stream.getcode())
+    except urllib.error.HTTPError:
+        raise DataTimeout
+    except urllib.error.URLError:
+        raise DataTimeout
+    except socket.timeout:
+        raise DataTimeout
+    except http.client.RemoteDisconnected:
+        raise DataTimeout
+    except ConnectionResetError:
+        raise DataTimeout
+    try:
+        raw_data = stream.read()
+        return json.loads(raw_data)
+    except socket.timeout:
+        raise DataTimeout
+
+    logging.info('Response was %s', stream.getcode())
 
     logging.info("End update time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")

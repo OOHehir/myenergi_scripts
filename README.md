@@ -1,4 +1,4 @@
-# myenergi_scripts
+# Myenergi Scripts
 Python Scripts to interact with the 'MyEnergi' server
 
-Very rough version so far, not working!
+Working now, basic login process

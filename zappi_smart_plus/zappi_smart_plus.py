@@ -28,12 +28,11 @@ TRUE = 1
 FALSE = 0
 
 ###########
-leaf_battery_kwh = 30
-target_leaf_km = 100
 winter_time_night_rate_start = '23:05'
 summer_time_night_rate_start = '00:05'
 target_finish_time = '0500'
 sleepsecs = 30     # Time to wait before polling Nissan servers for update
+
 ###########
 ## Various URL's..
 ## For more see https://github.com/twonk/MyEnergi-App-Api
@@ -59,7 +58,7 @@ if os.path.exists(config_file_path):
     hub_serial = parser.get('get-myenergi-info', 'hub_serial')
     hub_password = parser.get('get-myenergi-info', 'hub_password')
     zappi_serial = parser.get('get-myenergi-info', 'zappi_serial')
-    GET_UPDATE_INTERVAL = parser.get('get-myenergi-info', 'api_update_interval_min')
+    #GET_UPDATE_INTERVAL = parser.get('get-myenergi-info', 'api_update_interval_min')
     leaf_username = parser.get('get-leaf-info', 'username')
     leaf_password = parser.get('get-leaf-info', 'password')
     nissan_region_code = parser.get('get-leaf-info', 'nissan_region_code')
@@ -87,7 +86,7 @@ def get_zappi_status(parameter):
         r = requests.get(zappi_status_url, headers = h, auth=HTTPDigestAuth(hub_serial, hub_password), timeout=10)
     except:
         logging.error("MyEnergi API error")
-        return
+        return(-1)
 
     if (r.status_code == 200):
         logging.info("Login successful..")
@@ -106,8 +105,12 @@ def get_zappi_status(parameter):
         logging.info("Searching for.."+ parameter)
         # Return single parameter from json
         data = r.json()
-        #print (data['zappi'][0][parameter])
-        return (data['zappi'][0][parameter])
+        if parameter in data:
+            logging.info("Found parameter %s" ,parameter)
+            return (data['zappi'][0][parameter])
+        else:
+            logging.info("Didn't find parameter %s" ,parameter)
+            return
     else:
         # Return all data
         return (r.json())
@@ -151,7 +154,7 @@ def set_boost_mode(mode, kwh, target_time):
         return(-1)
 
     #logging.info(r.headers)
-    pprint(r.json())
+    #pprint(r.json())
 
     return (data['status'])
 
@@ -226,7 +229,7 @@ def get_leaf_status():
       # pprint.pprint(climate)
 
       logging.info("End update time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-      logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")
+      #logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")
       return (leaf_info)
   else:
       logging.info("Did not get any response from the API")
@@ -234,7 +237,10 @@ def get_leaf_status():
 
 def main():
     # Check zappi in eco mode & car connected
+
     zappi_data = get_zappi_status('')
+    if (zappi_data == -1):
+        return('fail')
 
     if (zappi_data['zappi'][0]['pst'] != 'A') & (zappi_data['zappi'][0]['zmo'] == 3):
         # Get battery charge of leaf -> need to update battery status
@@ -248,19 +254,30 @@ def main():
         try:
             leaf = s.get_leaf()
         except:
-            logging.error("CarWings API error")
+            logging.error("CarWings API error (leaf = s.get_leaf())")
             return
 
         # Give the nissan servers a bit of a delay so that we don't get stale data
         time.sleep(1)
 
+        logging.info("get_latest_battery_status from servers")
+
+        # Make sure Nissan servers available before we try updating battery
+        try:
+            leaf_info = leaf.get_latest_battery_status()
+        except:
+            logging.error("CarWings API error (leaf_info = leaf.get_latest_battery_status())")
+            return
         # Update servers - warning depletes 12v onboard battery!
         #update_status = update_battery_status(leaf, sleepsecs)
 
-        logging.info("get_latest_battery_status from servers")
+        # Should have up to date info now
         leaf_info = leaf.get_latest_battery_status()
-        #start_date = leaf_info.answer["BatteryStatusRecords"]["OperationDateAndTime"]
-        #logging.info("start_date=", start_date)
+
+        # Make sure we have data
+        if (battery_percent not in leaf_info):
+          logging.error("No battery percentage data in leaf_info")
+          return('fail')
 
         battery_remaining_amount = int(int(leaf_info.battery_percent) * battery_cap / 100)
         logging.info("Leaf battery remaining amount = %d KwH", battery_remaining_amount)
@@ -271,15 +288,18 @@ def main():
         else:
             # Need to charge
             add_kwh = (battery_target_amnt - battery_remaining_amount)
-            logging.info("Need to add %d Kwh" % add_kwh)
-            #set_boost_mode('', add_kwh, '0000')
+            logging.info("Adding %d Kwh" % add_kwh)
+            set_boost_mode('', add_kwh, '0000')
             # Check Zappi didn't do a hard reset..
-            time.sleep(30)
+            time.sleep(120)
             # Refresh data
             zappi_data = get_zappi_status('')
             if "tbh" not in zappi_data:
-                # Not set, try again!
-                set_boost_mode('', add_kwh,'0000')
+              # Not set, try again!
+              logging.info("Failed to set boost, re-trying")
+              set_boost_mode('', add_kwh,'0000')
+
+        return('success')
 
     elif(zappi_data['zappi'][0]['pst'] == 'A'):
         logging.info("Car not connected")
@@ -292,20 +312,33 @@ def main():
         logging.info("Unknown error")
         return('Unknown error')
 
+def main_wrapper():
+  # Lots of things can go wrong with API's etc so use this function to try main function a number of times
+
+  attempt = 1
+
+  while attempt < 10:
+    logging.info("Attempt number %d", attempt)
+    if (main() == 'success'):
+      logging.info("Main function success")
+      break
+    else:
+      logging.info("Main function failure...retrying")
+      attempt += 1
+      time.sleep(60)
 
 #########################################################################################################################
 # Run on first time
-pprint(get_zappi_status(''))
+#pprint(get_zappi_status(''))
 
-main()
+#main()
 
 # Kwh must be interger (i.e no fractions, time in 15min intervals)
 #set_smart_mode(kwh=4, target_time=600)
 
-# Then schedule
-#schedule.every(int(GET_UPDATE_INTERVAL)).minutes.do(get_zappi_status)
+main_wrapper()
 
-schedule.every().day.at(winter_time_night_rate_start).do(main)
+schedule.every().day.at(winter_time_night_rate_start).do(main_wrapper())
 #schedule.every().day.at(summertime_time_night_rate_start).do(charge_summertime)
 
 logging.info("Entering schedule loop")

@@ -1,0 +1,17 @@
+# Start python script located
+# https://www.raspberrypi-spy.co.uk/2015/10/how-to-autorun-a-python-script-on-boot-using-systemd/
+# sudo cp zappi_smart_plus.service /lib/systemd/system/zappi_smart_plus.service
+
+# Check status of service
+# sudo systemctl status zappi_smart_plus.service
+
+[Unit]
+Description=Python Script to schedule check of leaf battery level & set Zappi accordingly
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/python3 /home/pi/zappi_smart_plus/zappi_smart_plus.py
+
+[Install]
+WantedBy=multi-user.target
